@@ -483,7 +483,7 @@ export const apply = (state: GameState, action: Action): GameState => {
       } else {
         moveBy(s, pid, roll.total)
         resolveLanding(s, rng, pid)
-        if (roll.isDouble && s.phase !== Phase.GameOver && !s.players[pid].inJail) {
+        if (roll.isDouble && !s.players[pid].inJail) {
           s.phase = Phase.PreRoll
         }
       }
