@@ -2,7 +2,14 @@ import { Tile, TileKind, ColorGroup } from '../types'
 
 export const BOARD_SIZE = 40
 
-const prop = (i: number, name: string, group: ColorGroup, price: number, rents: number[], houseCost: number): Tile => ({
+const prop = (
+  i: number,
+  name: string,
+  group: ColorGroup,
+  price: number,
+  rents: [number, number, number, number, number, number],
+  houseCost: number
+): Tile => ({
   index: i,
   kind: TileKind.Property,
   name,
@@ -18,7 +25,7 @@ const util = (i: number, name: string, price: number): Tile => ({ index: i, kind
 
 const tax = (i: number, name: string, amount: number): Tile => ({ index: i, kind: TileKind.Tax, name, amount })
 
-const special = (i: number, kind: TileKind, name: string): Tile => ({ index: i, kind, name })
+const special = (i: number, kind: TileKind, name: string): Tile => ({ index: i, kind, name } as Tile)
 
 export const BOARD: Tile[] = [
   special(0, TileKind.Go, 'Go'),
