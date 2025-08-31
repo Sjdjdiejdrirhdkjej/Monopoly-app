@@ -4,6 +4,7 @@ import {
   AuctionState,
   BOARD_SIZE,
   BOARD,
+  GROUPS,
   Card,
   CardDeck,
   CardKind,
@@ -659,7 +660,156 @@ export const deserialize = (json: string): GameState => {
   return s
 }
 
+const diceTotals = (() => {
+  const counts: Record<number, number> = {}
+  for (let d1 = 1; d1 <= 6; d1++) for (let d2 = 1; d2 <= 6; d2++) counts[d1 + d2] = (counts[d1 + d2] || 0) + 1
+  const out: { steps: number; p: number }[] = []
+  for (let t = 2; t <= 12; t++) out.push({ steps: t, p: (counts[t] || 0) / 36 })
+  return out
+})()
+
+const JAIL_INDEX = 10
+
+const groupTiles = (color: any): number[] => GROUPS[color as keyof typeof GROUPS] || []
+
+const groupOf = (i: number): any | null => {
+  const tile = BOARD[i]
+  return tile.kind === TileKind.Property ? tile.color : null
+}
+
+const canBuildOn = (s: GameState, pid: number, tile: number): boolean => {
+  const t = s.board[tile]
+  if (t.kind !== TileKind.Property) return false
+  const tiles = BOARD.filter(x => x.kind === TileKind.Property && x.color === t.color).map(x => x.index)
+  if (!tiles.every(i => (s.ownership[i]?.owner ?? null) === pid)) return false
+  const own = s.ownership[tile] || { owner: null, houses: 0, hotel: false }
+  if (own.hotel) return false
+  const houses = own.houses ?? 0
+  const minH = Math.min(...tiles.map(i => (s.ownership[i]?.houses ?? 0)))
+  if (houses > minH) return false
+  if ((s.players[pid]?.cash ?? 0) < t.houseCost) return false
+  return true
+}
+
+const legalBuildTiles = (s: GameState, pid: number): { tile: number; cost: number }[] => {
+  const res: { tile: number; cost: number }[] = []
+  for (const [k, own] of Object.entries(s.ownership)) {
+    const i = Number(k)
+    if (own.owner !== pid) continue
+    const t = s.board[i]
+    if (t.kind !== TileKind.Property) continue
+    if (canBuildOn(s, pid, i)) res.push({ tile: i, cost: t.houseCost })
+  }
+  return res
+}
+
+const legalSellTiles = (s: GameState, pid: number): { tile: number; value: number }[] => {
+  const res: { tile: number; value: number }[] = []
+  for (const [k, own] of Object.entries(s.ownership)) {
+    const i = Number(k)
+    if (own.owner !== pid) continue
+    const t = s.board[i]
+    if (t.kind !== TileKind.Property) continue
+    const tiles = BOARD.filter(x => x.kind === TileKind.Property && x.color === t.color).map(x => x.index)
+    const maxH = Math.max(...tiles.map(ii => (s.ownership[ii]?.houses ?? 0)))
+    const houses = own.hotel ? 5 : own.houses ?? 0
+    if (houses <= 0) continue
+    if (!own.hotel && (own.houses ?? 0) < maxH) continue
+    res.push({ tile: i, value: Math.floor(t.houseCost / 2) })
+  }
+  return res
+}
+
+const roughLiquidity = (s: GameState, pid: number): { cash: number; houseSaleValue: number; total: number } => {
+  let value = 0
+  for (const [k, own] of Object.entries(s.ownership)) {
+    const i = Number(k)
+    if (own.owner !== pid) continue
+    const t = s.board[i]
+    if (t.kind !== TileKind.Property) continue
+    const houses = (own.hotel ? 5 : (own.houses ?? 0))
+    value += houses * (t.houseCost / 2)
+  }
+  const cash = s.players[pid]?.cash ?? 0
+  return { cash, houseSaleValue: Math.floor(value), total: cash + Math.floor(value) }
+}
+
+const rentCurve = (s: GameState, tile: number): number[] => {
+  const t = s.board[tile]
+  if (t.kind !== TileKind.Property) return [0, 0, 0, 0, 0, 0]
+  const owner = s.ownership[tile]?.owner
+  const hasMono = owner != null ? BOARD.filter(x => x.kind === TileKind.Property && x.color === t.color).map(x => x.index).every(i => (s.ownership[i]?.owner ?? null) === owner) : false
+  const base0 = hasMono ? t.rents[0] * 2 : t.rents[0]
+  return [base0, t.rents[1], t.rents[2], t.rents[3], t.rents[4], t.rents[5]]
+}
+
+const computeLandingProbs = (s: GameState, pid: number, turns = 1): number[] => {
+  const size = BOARD_SIZE
+  const pos0 = s.players[pid]?.position ?? 0
+  let current = new Float64Array(size)
+  current[pos0] = 1
+  let accum = new Float64Array(size)
+  for (let step = 0; step < turns; step++) {
+    const next = new Float64Array(size)
+    for (let i = 0; i < size; i++) {
+      const pHere = current[i]
+      if (pHere === 0) continue
+      for (const { steps, p } of diceTotals) {
+        let dest = (i + steps) % size
+        const tile = s.board[dest]
+        if (tile.kind === TileKind.GoToJail) dest = JAIL_INDEX
+        next[dest] += pHere * p
+      }
+    }
+    for (let i = 0; i < size; i++) accum[i] += next[i]
+    current = next
+  }
+  const out = Array.from(accum).map(x => x / Math.max(1, turns))
+  return out
+}
+
+const expectedRentRisk = (s: GameState, pid: number, turns = 1): number => {
+  const probs = computeLandingProbs(s, pid, turns)
+  let sum = 0
+  const avgDice: DiceRoll = { d1: 3, d2: 4, total: 7, isDouble: false }
+  for (let i = 0; i < probs.length; i++) {
+    const own = s.ownership[i]
+    if (!own || own.owner == null || own.owner === pid) continue
+    sum += probs[i] * rentFor(s, i, avgDice)
+  }
+  return sum
+}
+
+const monopolyProgress = (s: GameState, pid: number) => {
+  const res: { color: any; own: number; total: number; missing: number; unowned: number; ownedBy: Record<number, number> }[] = []
+  for (const [color, tiles] of Object.entries(GROUPS)) {
+    const ints = tiles as unknown as number[]
+    let own = 0
+    const ownedBy: Record<number, number> = {}
+    let unowned = 0
+    for (const i of ints) {
+      const o = s.ownership[i]
+      if (!o || o.owner == null) unowned += 1
+      else if (o.owner === pid) own += 1
+      else ownedBy[o.owner] = (ownedBy[o.owner] || 0) + 1
+    }
+    const total = ints.length
+    res.push({ color: color as any, own, total, missing: total - own, unowned, ownedBy })
+  }
+  return res
+}
+
 export const selectors = {
   rentFor,
   ownsAllInGroup,
+  groupTiles,
+  groupOf,
+  canBuildOn,
+  legalBuildTiles,
+  legalSellTiles,
+  roughLiquidity,
+  rentCurve,
+  computeLandingProbs,
+  expectedRentRisk,
+  monopolyProgress,
 }
