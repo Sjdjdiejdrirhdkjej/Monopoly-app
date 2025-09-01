@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react'
 import { apply } from '@monopoly/rules'
 import { BOARD, GameState, Phase, Action, TileKind, DiceRoll } from '@monopoly/shared'
-import { newGame } from '@monopoly/ai'
+import { newGame, chooseAction, PRESETS, createAiRng } from '@monopoly/ai'
 import { ThreeStage } from './scene/ThreeStage'
 import { Board as Board3D, computeTileCenters } from './scene/Board'
 import { Tokens } from './scene/Tokens'
@@ -16,10 +16,12 @@ import { HUD } from './ui/HUD'
 const defaultNames = ['P1', 'P2', 'P3', 'P4']
 
 const App: React.FC = () => {
-  const [seed, setSeed] = useState('m2')
+  const [seed, setSeed] = useState('m3')
   const [names, setNames] = useState<string[]>(defaultNames)
   const [state, setState] = useState<GameState | null>(null)
   const [auto, setAuto] = useState(false)
+  const [preset, setPreset] = useState<'Conservative' | 'Balanced' | 'Aggressive'>('Balanced')
+  const aiCtx = useRef<any | null>(null)
 
   const [hovered, setHovered] = useState<number | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
@@ -30,6 +32,7 @@ const App: React.FC = () => {
 
   const start = () => {
     const s = newGame(seed, names)
+    aiCtx.current = { params: PRESETS[preset], rng: createAiRng(seed + '/client'), memory: { auctionPass: {}, tradeRounds: {} } }
     setState(s)
   }
 
@@ -47,7 +50,7 @@ const App: React.FC = () => {
     if (!state) return
     if (state.phase === Phase.GameOver) return
     const acts: Action[] = inferLegal(state)
-    const action = acts[0]
+    const action = aiCtx.current ? chooseAction(state, acts, aiCtx.current) : acts[0]
     await doAction(action)
   }
 
@@ -74,7 +77,7 @@ const App: React.FC = () => {
       {!state && (
         <div style={{ position: 'fixed', inset: 0, display: 'grid', placeItems: 'center', background: '#f7f9fc' }}>
           <div style={{ display: 'grid', gap: 8, padding: 16, background: 'white', border: '1px solid #ddd', borderRadius: 8 }}>
-            <h1>Monopoly Clone - M2</h1>
+            <h1>Monopoly Clone - M3</h1>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input value={seed} onChange={e => setSeed(e.target.value)} placeholder="seed" />
               <input
@@ -82,6 +85,11 @@ const App: React.FC = () => {
                 onChange={e => setNames(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
                 placeholder="player names comma separated"
               />
+              <select value={preset} onChange={e => setPreset(e.target.value as any)}>
+                <option value="Conservative">Conservative</option>
+                <option value="Balanced">Balanced</option>
+                <option value="Aggressive">Aggressive</option>
+              </select>
               <button onClick={start}>Start</button>
             </div>
           </div>
