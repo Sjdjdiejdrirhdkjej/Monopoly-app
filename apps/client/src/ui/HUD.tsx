@@ -4,9 +4,10 @@ import { GameState, Tile, TileKind } from '@monopoly/shared'
 export const HUD: React.FC<{
   state: GameState
   hoveredTile: Tile | null
-}> = ({ state, hoveredTile }) => {
+  isMobile?: boolean
+}> = ({ state, hoveredTile, isMobile }) => {
   return (
-    <div style={hud}>
+    <div style={hud} className={isMobile ? 'hud-mobile' : ''}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <div>Phase: {state.phase}</div>
         <div>Current: <b>{state.players[state.currentPlayer]?.name}</b></div>
