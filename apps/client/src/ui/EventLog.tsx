@@ -1,9 +1,9 @@
 import React from 'react'
 import { Event, GameState } from '@monopoly/shared'
 
-export const EventLog: React.FC<{ state: GameState }> = ({ state }) => {
+export const EventLog: React.FC<{ state: GameState; isMobile?: boolean }> = ({ state, isMobile }) => {
   return (
-    <div style={panel}>
+    <div style={panel} className={isMobile ? 'event-log-mobile' : ''}>
       <div style={{ fontWeight: 600, marginBottom: 6 }}>Events</div>
       <div style={{ maxHeight: 140, overflow: 'auto', display: 'grid', gap: 4 }}>
         {state.logs.slice(-30).reverse().map((e, i) => (
