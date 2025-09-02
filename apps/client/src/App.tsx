@@ -9,9 +9,16 @@ import { HousesHotels } from './scene/HousesHotels'
 import { Dice, DiceApi } from './scene/Dice'
 import { PurchaseModal } from './ui/PurchaseModal'
 import { RentModal } from './ui/RentModal'
+import { CardModal } from './ui/CardModal'
+import { AuctionModal } from './ui/AuctionModal'
+import { TradeModal } from './ui/TradeModal'
+import { Tutorial, useTutorial } from './ui/Tutorial'
+import { HelpPanel } from './ui/HelpPanel'
 import { EventLog } from './ui/EventLog'
 import { QualityPanel } from './ui/QualityPanel'
 import { HUD } from './ui/HUD'
+import { useMobile, getMobilePerformanceSettings, getMobileClasses } from './hooks/useMobile'
+import { useGameTelemetry } from './hooks/useWebSocket'
 
 const defaultNames = ['P1', 'P2', 'P3', 'P4']
 
@@ -27,6 +34,12 @@ const App: React.FC = () => {
   const [selected, setSelected] = useState<number | null>(null)
   const [shadows, setShadows] = useState(true)
   const [physicsDice, setPhysicsDice] = useState(true)
+  const [showHelp, setShowHelp] = useState(false)
+
+  const tutorial = useTutorial(state)
+  const mobileInfo = useMobile()
+  const mobileClasses = getMobileClasses(mobileInfo)
+  const telemetry = useGameTelemetry(state, true)
 
   const diceRef = useRef<DiceApi>(null)
 
@@ -34,6 +47,11 @@ const App: React.FC = () => {
     const s = newGame(seed, names)
     aiCtx.current = { params: PRESETS[preset], rng: createAiRng(seed + '/client'), memory: { auctionPass: {}, tradeRounds: {} } }
     setState(s)
+    
+    // Apply mobile performance settings automatically
+    const mobileSettings = getMobilePerformanceSettings(mobileInfo)
+    setShadows(mobileSettings.shadows)
+    setPhysicsDice(mobileSettings.physicsDice)
   }
 
   const doAction = async (action: Action) => {
@@ -73,7 +91,7 @@ const App: React.FC = () => {
   const centers = useMemo(() => computeTileCenters(), [])
 
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
+    <div style={{ width: '100vw', height: '100vh' }} className={mobileClasses}>
       {!state && (
         <div style={{ position: 'fixed', inset: 0, display: 'grid', placeItems: 'center', background: '#f7f9fc' }}>
           <div style={{ display: 'grid', gap: 8, padding: 16, background: 'white', border: '1px solid #ddd', borderRadius: 8 }}>
@@ -109,23 +127,53 @@ const App: React.FC = () => {
 
       {state && (
         <>
-          <HUD state={state} hoveredTile={hovered != null ? state.board[hovered] : null} />
-          <EventLog state={state} />
-          <QualityPanel shadows={shadows} setShadows={setShadows} physicsDice={physicsDice} setPhysicsDice={setPhysicsDice} />
+          <HUD state={state} hoveredTile={hovered != null ? state.board[hovered] : null} isMobile={mobileInfo.isMobile} />
+          <EventLog state={state} isMobile={mobileInfo.isMobile} />
+          <QualityPanel shadows={shadows} setShadows={setShadows} physicsDice={physicsDice} setPhysicsDice={setPhysicsDice} isMobile={mobileInfo.isMobile} />
 
-          <div style={{ position: 'fixed', right: 16, top: 16, display: 'flex', gap: 8, zIndex: 12 }}>
+          <div style={{ position: 'fixed', right: 16, top: 16, display: 'flex', gap: 8, zIndex: 12 }} className={mobileInfo.isMobile ? 'controls-mobile' : ''}>
             <button onClick={() => step()}>Step</button>
             <label>
               <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> Auto
             </label>
             <button onClick={save}>Save</button>
             <button onClick={load}>Load</button>
+            <button onClick={tutorial.toggleTutorial}>
+              {tutorial.isEnabled ? '🎯 Tutorial ON' : '🎯 Tutorial'}
+            </button>
+            <button onClick={() => setShowHelp(true)}>📖 Help</button>
           </div>
 
           <Controls state={state} onAct={doAction} />
 
           <PurchaseModal state={state} onBuy={() => doAction({ type: 'Buy' })} onDecline={() => doAction({ type: 'DeclineBuy' })} />
           <RentModal state={state} />
+          <CardModal state={state} onConfirm={() => {/* Card effects are auto-applied */}} isMobile={mobileInfo.isMobile} />
+          <AuctionModal 
+            state={state} 
+            onBid={(amount) => doAction({ type: 'Bid', amount })} 
+            onPass={() => doAction({ type: 'PassBid' })} 
+            isMobile={mobileInfo.isMobile}
+          />
+          <TradeModal 
+            state={state}
+            onProposeTrade={(offer) => doAction({ type: 'ProposeTrade', offer })}
+            onAcceptTrade={() => doAction({ type: 'AcceptTrade' })}
+            onRejectTrade={() => doAction({ type: 'RejectTrade' })}
+            isMobile={mobileInfo.isMobile}
+          />
+          <Tutorial
+            state={state}
+            isVisible={tutorial.isEnabled}
+            onToggle={tutorial.toggleTutorial}
+            onComplete={tutorial.completeTutorial}
+            isMobile={mobileInfo.isMobile}
+          />
+          <HelpPanel
+            isVisible={showHelp}
+            onClose={() => setShowHelp(false)}
+            isMobile={mobileInfo.isMobile}
+          />
         </>
       )}
     </div>
@@ -147,12 +195,7 @@ const Controls: React.FC<{ state: GameState; onAct: (a: Action) => void | Promis
         </>
       )}
       {phase === Phase.EndTurn && <button onClick={() => onAct({ type: 'EndTurn' })}>End Turn</button>}
-      {phase === Phase.Auction && state.auction?.active && (
-        <>
-          <button onClick={() => onAct({ type: 'Bid', amount: (state.auction!.currentBid || 0) + (state.auction!.minIncrement || 10) })}>Bid ${(state.auction!.currentBid || 0) + (state.auction!.minIncrement || 10)}</button>
-          <button onClick={() => onAct({ type: 'PassBid' })}>Pass</button>
-        </>
-      )}
+      {/* Auction controls moved to AuctionModal */}
     </div>
   )
 }
