@@ -1,0 +1,92 @@
+{
+  "version": 2,
+  "name": "monopoly-app",
+  "builds": [
+    {
+      "src": "apps/client/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "apps/server/src/index.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/apps/server/src/index.ts"
+    },
+    {
+      "src": "/ws/(.*)",
+      "dest": "/apps/server/src/index.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/apps/client/dist/$1"
+    }
+  ],
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm build",
+  "outputDirectory": "apps/client/dist",
+  "framework": "vite",
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "apps/server/src/index.ts": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-Requested-With, Content-Type, Authorization"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/game",
+      "destination": "/",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/health",
+      "destination": "/apps/server/src/index.ts"
+    }
+  ],
+  "regions": ["iad1"],
+  "github": {
+    "autoAlias": false
+  }
+}
