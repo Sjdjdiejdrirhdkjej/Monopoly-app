@@ -5,9 +5,10 @@ export const QualityPanel: React.FC<{
   setShadows: (v: boolean) => void
   physicsDice: boolean
   setPhysicsDice: (v: boolean) => void
-}> = ({ shadows, setShadows, physicsDice, setPhysicsDice }) => {
+  isMobile?: boolean
+}> = ({ shadows, setShadows, physicsDice, setPhysicsDice, isMobile }) => {
   return (
-    <div style={panel}>
+    <div style={panel} className={isMobile ? 'quality-mobile' : ''}>
       <div style={{ fontWeight: 600, marginBottom: 6 }}>Quality</div>
       <label style={row}><input type="checkbox" checked={shadows} onChange={e => setShadows(e.target.checked)} /> Shadows</label>
       <label style={row}><input type="checkbox" checked={physicsDice} onChange={e => setPhysicsDice(e.target.checked)} /> Physics Dice</label>
